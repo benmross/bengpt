@@ -1,0 +1,26 @@
+# The April 2025 run, as LLaMA-Factory settings (it was configured through
+# LlamaBoard, its web UI, on a Colab T4). Run with:
+#   llamafactory-cli train train_lora.yaml
+# Register the ShareGPT file from prep/csv_to_sharegpt.py in data/dataset_info.json
+# under the name used below, with "formatting": "sharegpt".
+model_name_or_path: meta-llama/Llama-3.1-8B-Instruct
+template: llama3
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_alpha: 16
+lora_dropout: 0
+lora_target: all
+quantization_bit: 4          # also run at 8 to compare
+quantization_method: bnb
+dataset: my_messages
+cutoff_len: 1024             # also run at 2048 to compare
+learning_rate: 5.0e-5
+num_train_epochs: 1
+per_device_train_batch_size: 8
+lr_scheduler_type: cosine
+output_dir: saves/llama31-8b-lora
+logging_steps: 10
+save_steps: 500
+fp16: true

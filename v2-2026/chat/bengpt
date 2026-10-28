@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Text with BenGPT. You play the other person; the model answers as Ben.
+
+  bengpt                 pick who you are from the list
+  bengpt Riley            straight in
+  bengpt "Some Name" --rel "lab partner"
+Inside the chat: an empty line sends what you have typed (so you can send a
+burst), /again redraws the last reply, /new starts over, /quit leaves.
+"""
+import json, os, sys, subprocess, time, urllib.request, datetime, argparse, atexit
+HERE = os.path.dirname(os.path.realpath(__file__))
+MODEL = os.path.expanduser("~/bengpt/bengpt-gemma12b-q4.gguf")
+PORT = 8089
+ap = argparse.ArgumentParser()
+ap.add_argument("who", nargs="?"); ap.add_argument("--rel"); ap.add_argument("--platform", default="iMessage")
+ap.add_argument("--temp", type=float, default=1.0)
+a = ap.parse_args()
+people = json.load(open(f"{HERE}/people.json"))
+
+def up():
+    try: urllib.request.urlopen(f"http://127.0.0.1:{PORT}/health", timeout=1); return True
+    except Exception: return False
+if not up():
+    print("loading the model (about 20 seconds)...")
+    srv = subprocess.Popen(["/opt/homebrew/bin/llama-server", "-m", MODEL, "--port", str(PORT), "-c", "4096", "-ngl", "99", "--jinja"],
+                           stdout=subprocess.DEVNULL, stderr=open(os.path.expanduser("~/bengpt/server.log"), "w"))
+    atexit.register(srv.terminate)
+    for _ in range(180):
+        if up(): break
+        time.sleep(1)
+    else: sys.exit("the model server did not start; see ~/bengpt/server.log")
+
+who = a.who
+if not who:
+    names = sorted(people)
+    for i, n in enumerate(names, 1): print(f"{i:2} {n}")
+    x = input("who are you? (number or any name) ").strip()
+    who = names[int(x) - 1] if x.isdigit() else x
+match = next((n for n in people if n.lower().startswith(who.lower())), None)
+rel = a.rel or (people[match] if match else "")
+who = match or who
+system = f"Ben is messaging {who}{f' ({rel})' if rel else ''} on {a.platform}, {datetime.date.today():%B %Y}."
+print(system + "\n")
+
+def reply(msgs):
+    body = json.dumps({"messages": msgs, "temperature": a.temp, "top_p": 0.95, "max_tokens": 120}).encode()
+    r = urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{PORT}/v1/chat/completions", body, {"Content-Type": "application/json"}))
+    return json.load(r)["choices"][0]["message"]["content"].strip()
+
+def show(text):
+    for line in text.split("\n"):
+        if line.strip(): print(f"  \033[94mben:\033[0m {line}")
+
+msgs = [{"role": "system", "content": system}]
+while True:
+    lines = []
+    while True:
+        try: l = input("you: " if not lines else "     ")
+        except EOFError: sys.exit()
+        if l.strip() in ("/quit", "/q"): sys.exit()
+        if l.strip() in ("/new", "/again") or (not l.strip() and lines) : break
+        if l.strip(): lines.append(l)
+    if l.strip() == "/new":
+        msgs = msgs[:1]; print("-- new conversation --"); continue
+    if l.strip() == "/again" and msgs[-1]["role"] == "assistant":
+        msgs.pop()
+    elif lines:
+        msgs.append({"role": "user", "content": "\n".join(lines)})
+    else:
+        continue
+    out = reply(msgs); msgs.append({"role": "assistant", "content": out}); show(out)

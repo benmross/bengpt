@@ -1,0 +1,14 @@
+# Nothing personal belongs in this repository: no exports, databases,
+# datasets, trained weights or generated samples.
+*.db
+*.xml
+*.csv
+*.jsonl
+*.gguf
+*.safetensors
+dataset/
+sources/
+runs/
+people.json
+__pycache__/
+.venv/
